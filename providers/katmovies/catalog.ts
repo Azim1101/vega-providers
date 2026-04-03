@@ -8,8 +8,8 @@ export const catalog = [
     filter: "/category/netflix",
   },
   {
-    title: "Animated",
-    filter: "/category/animated",
+    title: "Korean Drama (In Hindi)",
+    filter: "/category/Korean Drama (In Hindi)",
   },
   {
     title: "Amazon Prime",
