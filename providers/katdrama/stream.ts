@@ -66,10 +66,11 @@ export async function getStream({
     });
 
     // Look for embedded players with data attributes
-    $(["data-video], [data-link]").each((_, el) => {
+    $(`[data-video], [data-link]`).each((_, el) => {
       const player = $(el);
-      const videoUrl = player.attr("data-video") || player.attr("data-link") || "";
-      
+      const videoUrl =
+        player.attr("data-video") || player.attr("data-link") || "";
+
       if (videoUrl) {
         streams.push({
           server: player.attr("data-server") || "Player",

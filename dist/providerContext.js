@@ -41486,8 +41486,15 @@ var {
 
 // providers/getBaseUrl.ts
 var expireTime = 60 * 60 * 1e3;
+var fallbackBaseUrls = {
+  kdramasmaza: "https://kdramasmaza.net"
+};
 var getBaseUrl = /* @__PURE__ */ __name((providerValue) => __async(null, null, function* () {
+  var _a5;
   try {
+    if (fallbackBaseUrls[providerValue]) {
+      return fallbackBaseUrls[providerValue];
+    }
     let baseUrl = "";
     const cacheKey = "CacheBaseUrl" + providerValue;
     const timeKey = "baseUrlTime" + providerValue;
@@ -41495,11 +41502,11 @@ var getBaseUrl = /* @__PURE__ */ __name((providerValue) => __async(null, null, f
       "https://himanshu8443.github.io/providers/modflix.json"
     );
     const baseUrlData = yield baseUrlRes.json();
-    baseUrl = baseUrlData[providerValue].url;
+    baseUrl = ((_a5 = baseUrlData[providerValue]) == null ? void 0 : _a5.url) || "";
     return baseUrl;
   } catch (error) {
     console.error(`Error fetching baseUrl: ${providerValue}`, error);
-    return "";
+    return fallbackBaseUrls[providerValue] || "";
   }
 }), "getBaseUrl");
 

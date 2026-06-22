@@ -280,6 +280,14 @@
     "disabled": false
   },
   {
+    "display_name": "KDramasMaza",
+    "value": "kdramasmaza",
+    "version": "1.0",
+    "icon": "",
+    "type": "global",
+    "disabled": false
+  },
+  {
     "display_name": "Dooflix",
     "value": "dooflix",
     "version": "1.4",

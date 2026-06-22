@@ -1,8 +1,16 @@
 // 1 hour
 const expireTime = 60 * 60 * 1000;
 
+const fallbackBaseUrls: Record<string, string> = {
+  kdramasmaza: "https://kdramasmaza.net",
+};
+
 export const getBaseUrl = async (providerValue: string) => {
   try {
+    if (fallbackBaseUrls[providerValue]) {
+      return fallbackBaseUrls[providerValue];
+    }
+
     let baseUrl = "";
     const cacheKey = "CacheBaseUrl" + providerValue;
     const timeKey = "baseUrlTime" + providerValue;
@@ -17,13 +25,13 @@ export const getBaseUrl = async (providerValue: string) => {
       "https://himanshu8443.github.io/providers/modflix.json"
     );
     const baseUrlData = await baseUrlRes.json();
-    baseUrl = baseUrlData[providerValue].url;
+    baseUrl = baseUrlData[providerValue]?.url || "";
     // cacheStorageService.setString(cacheKey, baseUrl);
     // cacheStorageService.setObject(timeKey, Date.now());
     // }
     return baseUrl;
   } catch (error) {
     console.error(`Error fetching baseUrl: ${providerValue}`, error);
-    return "";
+    return fallbackBaseUrls[providerValue] || "";
   }
 };
