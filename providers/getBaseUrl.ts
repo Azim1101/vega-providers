@@ -2,7 +2,7 @@
 const expireTime = 60 * 60 * 1000;
 
 const fallbackBaseUrls: Record<string, string> = {
-  kdramasmaza: "https://kdramasmaza.net",
+  kdramasmaza: "http://kdramasmaza.net",
   katdrama: "https://www.katdrama.net",
   kdhindidubbed: "https://kdhindidubbed.cfd",
 };

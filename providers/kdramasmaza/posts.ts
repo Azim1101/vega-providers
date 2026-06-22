@@ -99,6 +99,17 @@ async function fetchPosts({
       });
     }
 
+    if (posts.length === 0) {
+      const rootUrl = new URL("/", new URL(url).origin).toString();
+      if (url !== rootUrl) {
+        return fetchPosts({
+          url: rootUrl,
+          signal,
+          cheerio,
+        });
+      }
+    }
+
     return posts;
   } catch (error) {
     console.error("kdramasmaza posts error:", error);
