@@ -29,6 +29,7 @@ export const getPosts = async function ({
 
   return fetchPosts({
     url: url.toString(),
+    baseUrl,
     signal,
     axios,
     cheerio,
@@ -57,6 +58,7 @@ export const getSearchPosts = async function ({
 
   return fetchPosts({
     url: url.toString(),
+    baseUrl,
     signal,
     axios,
     cheerio,
@@ -65,11 +67,13 @@ export const getSearchPosts = async function ({
 
 async function fetchPosts({
   url,
+  baseUrl,
   signal,
   axios,
   cheerio,
 }: {
   url: string;
+  baseUrl: string;
   signal: AbortSignal;
   axios: ProviderContext["axios"];
   cheerio: ProviderContext["cheerio"];
@@ -90,7 +94,7 @@ async function fetchPosts({
     let items: any[] = [];
 
     const payloadMatch = scriptText.match(
-      /__sveltekit_[^=]+\.resolve\((\{[\s\S]*?\})\);/
+      /__sveltekit_[^=]+\.resolve\((\{[\s\S]*?\})\)/
     );
 
     if (payloadMatch) {
@@ -137,12 +141,12 @@ async function fetchPosts({
 
         const normalizedLink = /^https?:\/\//i.test(slug)
           ? slug
-          : new URL(slug.replace(/^\//, ""), url).href;
+          : new URL(slug.replace(/^\//, ""), baseUrl).href;
 
         const normalizedImage = /^https?:\/\//i.test(image)
           ? image
           : image
-            ? new URL(image.replace(/^\//, ""), url).href
+            ? new URL(image.replace(/^\//, ""), baseUrl).href
             : "";
 
         return {

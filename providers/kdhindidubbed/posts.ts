@@ -83,33 +83,27 @@ async function fetchPosts({
     const posts: Post[] = [];
     const seen = new Set<string>();
 
-    $("article.post, article, .post, .entry-title a, h2 a, h3 a").each(
-      (_, el) => {
-        const card = $(el);
-        const title = card
-          .find("a[rel='bookmark'], .entry-title a, h2 a, h3 a, a")
-          .first()
-          .text()
-          .trim();
-        const link = card
-          .find("a[rel='bookmark'], .entry-title a, h2 a, h3 a, a")
-          .first()
-          .attr("href");
-        const image =
-          card.find("img").first().attr("src") ||
-          card.find("img").first().attr("data-src") ||
-          "";
+    $("article").each((_, el) => {
+      const card = $(el);
+      const titleLink = card
+        .find("a[rel='bookmark'], .entry-title a, h2 a, h3 a")
+        .first();
+      const title = titleLink.text().trim();
+      const link = titleLink.attr("href");
+      const image =
+        card.find("img").first().attr("src") ||
+        card.find("img").first().attr("data-src") ||
+        "";
 
-        if (title && link && !seen.has(link)) {
-          seen.add(link);
-          posts.push({
-            title: title.replace(/\s+/g, " ").trim(),
-            link,
-            image,
-          });
-        }
-      },
-    );
+      if (title && link && !seen.has(link)) {
+        seen.add(link);
+        posts.push({
+          title: title.replace(/\s+/g, " ").trim(),
+          link,
+          image,
+        });
+      }
+    });
 
     if (posts.length === 0) {
       const rootUrl = new URL("/", new URL(url).origin).toString();

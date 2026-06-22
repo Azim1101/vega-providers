@@ -45,10 +45,16 @@ export const getMeta = async function ({
     const directLinks: Link["directLinks"] = [];
 
     $("a[href]").each((_, el) => {
-      const href = $(el).attr("href") || "";
+      let href = $(el).attr("href") || "";
       const text = $(el).text().trim();
       if (!href || !text) return;
-      if (/episode|download|zip/i.test(text) || /episode|download|zip/i.test(href)) {
+      if (
+        /episode|download|zip/i.test(text) ||
+        /episode|download|zip/i.test(href)
+      ) {
+        if (!/^https?:\/\//i.test(href)) {
+          href = new URL(href, link).href;
+        }
         if (/download|zip/i.test(text) || /download|zip/i.test(href)) {
           directLinks.push({ title: text || "Download", link: href });
         } else if (/episode/i.test(text) || /episode/i.test(href)) {
