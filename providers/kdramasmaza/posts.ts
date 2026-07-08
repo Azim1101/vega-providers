@@ -20,13 +20,20 @@ export const getPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const { getBaseUrl, cheerio } = providerContext;
+  const { getBaseUrl, axios, cheerio } = providerContext;
   const baseUrl = await getBaseUrl("kdramasmaza");
   const url = new URL(filter || "/", baseUrl);
   if (page > 1) {
     url.searchParams.set("page", page.toString());
   }
-  return fetchPosts({ url: url.toString(), signal, cheerio });
+
+  return fetchPosts({
+    url: url.toString(),
+    baseUrl,
+    signal,
+    axios,
+    cheerio,
+  });
 };
 
 export const getSearchPosts = async function ({
@@ -41,60 +48,122 @@ export const getSearchPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const { getBaseUrl, cheerio } = providerContext;
+  const { getBaseUrl, axios, cheerio } = providerContext;
   const baseUrl = await getBaseUrl("kdramasmaza");
   const url = new URL("/", baseUrl);
   url.searchParams.set("s", searchQuery);
   if (page > 1) {
     url.searchParams.set("page", page.toString());
   }
-  return fetchPosts({ url: url.toString(), signal, cheerio });
+
+  return fetchPosts({
+    url: url.toString(),
+    baseUrl,
+    signal,
+    axios,
+    cheerio,
+  });
 };
 
 async function fetchPosts({
   url,
+  baseUrl,
   signal,
+  axios,
   cheerio,
 }: {
   url: string;
+  baseUrl: string;
   signal: AbortSignal;
+  axios: ProviderContext["axios"];
   cheerio: ProviderContext["cheerio"];
 }): Promise<Post[]> {
   try {
-    const response = await fetch(url, {
+    const response = await axios.get(url, {
       headers: defaultHeaders,
       signal,
     });
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(response.data || "");
     const posts: Post[] = [];
+    const seen = new Set<string>();
 
-    $("article, .post-item, .item").each((_, el) => {
+    const pushPost = ({
+      title,
+      link,
+      image,
+    }: {
+      title: string;
+      link?: string;
+      image?: string;
+    }) => {
+      if (!title || !link || seen.has(link)) {
+        return;
+      }
+
+      seen.add(link);
+      posts.push({
+        title: title.replace(/\s+/g, " ").trim(),
+        link: /^https?:\/\//i.test(link)
+          ? link
+          : new URL(link, baseUrl).href,
+        image: image
+          ? /^https?:\/\//i.test(image)
+            ? image
+            : new URL(image, baseUrl).href
+          : "",
+      });
+    };
+
+    $("article, .post, .post-item, .item").each((_, el) => {
       const article = $(el);
-      const title = article.find("h2 a, h3 a, .entry-title a").first().text().trim();
-      const link = article.find("h2 a, h3 a, .entry-title a").first().attr("href");
+      const titleLink = article
+        .find("a[rel='bookmark'], .entry-title a, h1 a, h2 a, h3 a, h4 a")
+        .first();
+      const fallbackLink = article.find("a[href]").first();
+      const imageEl = article
+        .find("img[src], img[data-src], img[data-lazy-src]")
+        .first();
+
+      const title =
+        titleLink.text().trim() ||
+        titleLink.attr("title") ||
+        fallbackLink.attr("title") ||
+        imageEl.attr("alt") ||
+        "";
+      const link = titleLink.attr("href") || fallbackLink.attr("href");
       const image =
-        article.find("img").first().attr("src") ||
-        article.find("img").first().attr("data-src") ||
+        imageEl.attr("src") ||
+        imageEl.attr("data-src") ||
+        imageEl.attr("data-lazy-src") ||
         "";
 
-      if (title && link && image) {
-        posts.push({
-          title: title.replace(/\s+/g, " ").trim(),
-          link,
-          image,
-        });
-      }
+      pushPost({ title, link, image });
     });
 
     if (posts.length === 0) {
-      $("a[href*='https://kdramasmaza.net/']").each((_, el) => {
+      $("a[href]").each((_, el) => {
         const anchor = $(el);
-        const href = anchor.attr("href");
-        const title = anchor.text().trim();
-        const image = anchor.find("img").first().attr("src") || "";
-        if (href && title && image && !href.includes("#") && !href.includes("mailto:")) {
-          posts.push({ title, link: href, image });
+        const href = anchor.attr("href") || "";
+        const imageEl = anchor.find("img").first();
+        const title =
+          anchor.text().trim() ||
+          anchor.attr("title") ||
+          imageEl.attr("alt") ||
+          "";
+        const image =
+          imageEl.attr("src") ||
+          imageEl.attr("data-src") ||
+          imageEl.attr("data-lazy-src") ||
+          "";
+
+        if (
+          href &&
+          /^https?:\/\/kdramasmaza\.net\//i.test(href) &&
+          !href.includes("#") &&
+          !href.includes("/category/") &&
+          !href.includes("/author/")
+        ) {
+          pushPost({ title, link: href, image });
         }
       });
     }
@@ -104,7 +173,9 @@ async function fetchPosts({
       if (url !== rootUrl) {
         return fetchPosts({
           url: rootUrl,
+          baseUrl,
           signal,
+          axios,
           cheerio,
         });
       }

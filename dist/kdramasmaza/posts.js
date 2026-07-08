@@ -1,1 +1,157 @@
-"use strict";var __defProp=Object.defineProperty,__getOwnPropDesc=Object.getOwnPropertyDescriptor,__getOwnPropNames=Object.getOwnPropertyNames,__hasOwnProp=Object.prototype.hasOwnProperty,__name=(target,value)=>__defProp(target,"name",{value:value,configurable:!0}),__export=(target,all)=>{for(var name in all)__defProp(target,name,{get:all[name],enumerable:!0})},__copyProps=(to,from,except,desc)=>{if(from&&"object"==typeof from||"function"==typeof from)for(let key of __getOwnPropNames(from))__hasOwnProp.call(to,key)||key===except||__defProp(to,key,{get:()=>from[key],enumerable:!(desc=__getOwnPropDesc(from,key))||desc.enumerable});return to},__toCommonJS=mod=>__copyProps(__defProp({},"__esModule",{value:!0}),mod),__async=(__this,__arguments,generator)=>new Promise((resolve,reject)=>{var fulfilled=value=>{try{step(generator.next(value))}catch(e){reject(e)}},rejected=value=>{try{step(generator.throw(value))}catch(e){reject(e)}},step=x=>x.done?resolve(x.value):Promise.resolve(x.value).then(fulfilled,rejected);step((generator=generator.apply(__this,__arguments)).next())}),posts_exports={};__export(posts_exports,{getPosts:()=>getPosts,getSearchPosts:()=>getSearchPosts});var defaultHeaders={Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8","Accept-Language":"en-US,en;q=0.9","User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"},getPosts=__name(function(_0){return __async(this,arguments,function*({filter:filter,page:page,signal:signal,providerContext:providerContext}){const{getBaseUrl:getBaseUrl,cheerio:cheerio}=providerContext,baseUrl=yield getBaseUrl("kdramasmaza"),url=new URL(filter||"/",baseUrl);return page>1&&url.searchParams.set("page",page.toString()),fetchPosts({url:url.toString(),signal:signal,cheerio:cheerio})})},"getPosts"),getSearchPosts=__name(function(_0){return __async(this,arguments,function*({searchQuery:searchQuery,page:page,signal:signal,providerContext:providerContext}){const{getBaseUrl:getBaseUrl,cheerio:cheerio}=providerContext,baseUrl=yield getBaseUrl("kdramasmaza"),url=new URL("/",baseUrl);return url.searchParams.set("s",searchQuery),page>1&&url.searchParams.set("page",page.toString()),fetchPosts({url:url.toString(),signal:signal,cheerio:cheerio})})},"getSearchPosts");function fetchPosts(_0){return __async(this,arguments,function*({url:url,signal:signal,cheerio:cheerio}){try{const response=yield fetch(url,{headers:defaultHeaders,signal:signal}),html=yield response.text(),$=cheerio.load(html),posts=[];if($("article, .post-item, .item").each((_,el)=>{const article=$(el),title=article.find("h2 a, h3 a, .entry-title a").first().text().trim(),link=article.find("h2 a, h3 a, .entry-title a").first().attr("href"),image=article.find("img").first().attr("src")||article.find("img").first().attr("data-src")||"";title&&link&&image&&posts.push({title:title.replace(/\s+/g," ").trim(),link:link,image:image})}),0===posts.length&&$("a[href*='https://kdramasmaza.net/']").each((_,el)=>{const anchor=$(el),href=anchor.attr("href"),title=anchor.text().trim(),image=anchor.find("img").first().attr("src")||"";href&&title&&image&&!href.includes("#")&&!href.includes("mailto:")&&posts.push({title:title,link:href,image:image})}),0===posts.length){const rootUrl=new URL("/",new URL(url).origin).toString();if(url!==rootUrl)return fetchPosts({url:rootUrl,signal:signal,cheerio:cheerio})}return posts}catch(error){return console.error("kdramasmaza posts error:",error),[]}})}__name(fetchPosts,"fetchPosts"),exports.getPosts=getPosts,exports.getSearchPosts=getSearchPosts;
+"use strict";
+
+const defaultHeaders = {
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+};
+
+exports.getPosts = async function ({
+  filter,
+  page,
+  signal,
+  providerContext,
+}) {
+  const { getBaseUrl, axios, cheerio } = providerContext;
+  const baseUrl = await getBaseUrl("kdramasmaza");
+  const url = new URL(filter || "/", baseUrl);
+
+  if (page > 1) {
+    url.searchParams.set("page", page.toString());
+  }
+
+  return fetchPosts({
+    url: url.toString(),
+    baseUrl,
+    signal,
+    axios,
+    cheerio,
+  });
+};
+
+exports.getSearchPosts = async function ({
+  searchQuery,
+  page,
+  signal,
+  providerContext,
+}) {
+  const { getBaseUrl, axios, cheerio } = providerContext;
+  const baseUrl = await getBaseUrl("kdramasmaza");
+  const url = new URL("/", baseUrl);
+
+  url.searchParams.set("s", searchQuery);
+  if (page > 1) {
+    url.searchParams.set("page", page.toString());
+  }
+
+  return fetchPosts({
+    url: url.toString(),
+    baseUrl,
+    signal,
+    axios,
+    cheerio,
+  });
+};
+
+async function fetchPosts({ url, baseUrl, signal, axios, cheerio }) {
+  try {
+    const response = await axios.get(url, {
+      headers: defaultHeaders,
+      signal,
+    });
+    const $ = cheerio.load(response.data || "");
+    const posts = [];
+    const seen = new Set();
+
+    const pushPost = ({ title, link, image }) => {
+      if (!title || !link || seen.has(link)) {
+        return;
+      }
+
+      seen.add(link);
+      posts.push({
+        title: title.replace(/\s+/g, " ").trim(),
+        link: /^https?:\/\//i.test(link) ? link : new URL(link, baseUrl).href,
+        image: image
+          ? /^https?:\/\//i.test(image)
+            ? image
+            : new URL(image, baseUrl).href
+          : "",
+      });
+    };
+
+    $("article, .post, .post-item, .item").each((_, el) => {
+      const article = $(el);
+      const titleLink = article
+        .find("a[rel='bookmark'], .entry-title a, h1 a, h2 a, h3 a, h4 a")
+        .first();
+      const fallbackLink = article.find("a[href]").first();
+      const imageEl = article
+        .find("img[src], img[data-src], img[data-lazy-src]")
+        .first();
+
+      const title =
+        titleLink.text().trim() ||
+        titleLink.attr("title") ||
+        fallbackLink.attr("title") ||
+        imageEl.attr("alt") ||
+        "";
+      const link = titleLink.attr("href") || fallbackLink.attr("href");
+      const image =
+        imageEl.attr("src") ||
+        imageEl.attr("data-src") ||
+        imageEl.attr("data-lazy-src") ||
+        "";
+
+      pushPost({ title, link, image });
+    });
+
+    if (posts.length === 0) {
+      $("a[href]").each((_, el) => {
+        const anchor = $(el);
+        const href = anchor.attr("href") || "";
+        const imageEl = anchor.find("img").first();
+        const title =
+          anchor.text().trim() ||
+          anchor.attr("title") ||
+          imageEl.attr("alt") ||
+          "";
+        const image =
+          imageEl.attr("src") ||
+          imageEl.attr("data-src") ||
+          imageEl.attr("data-lazy-src") ||
+          "";
+
+        if (
+          href &&
+          /^https?:\/\/kdramasmaza\.net\//i.test(href) &&
+          !href.includes("#") &&
+          !href.includes("/category/") &&
+          !href.includes("/author/")
+        ) {
+          pushPost({ title, link: href, image });
+        }
+      });
+    }
+
+    if (posts.length === 0) {
+      const rootUrl = new URL("/", new URL(url).origin).toString();
+      if (url !== rootUrl) {
+        return fetchPosts({
+          url: rootUrl,
+          baseUrl,
+          signal,
+          axios,
+          cheerio,
+        });
+      }
+    }
+
+    return posts;
+  } catch (error) {
+    console.error("kdramasmaza posts error:", error);
+    return [];
+  }
+}

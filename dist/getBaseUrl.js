@@ -46,7 +46,7 @@ __export(getBaseUrl_exports, {
 module.exports = __toCommonJS(getBaseUrl_exports);
 var expireTime = 60 * 60 * 1e3;
 var fallbackBaseUrls = {
-  kdramasmaza: "http://kdramasmaza.net",
+  kdramasmaza: "https://kdramasmaza.net",
   katdrama: "https://www.katdrama.net",
   kdhindidubbed: "https://kdhindidubbed.cfd"
 };
