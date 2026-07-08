@@ -1,4 +1,4 @@
-"use strict";
+import { Post, ProviderContext } from "../types";
 
 const defaultHeaders = {
   Accept:
@@ -8,144 +8,171 @@ const defaultHeaders = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 };
 
-exports.getPosts = async function ({
+export const getPosts = async function ({
   filter,
   page,
   signal,
   providerContext,
-}) {
-  const { getBaseUrl, axios, cheerio } = providerContext;
+}: {
+  filter: string;
+  page: number;
+  providerValue: string;
+  signal: AbortSignal;
+  providerContext: ProviderContext;
+}): Promise<Post[]> {
+  const { getBaseUrl, cheerio } = providerContext;
   const baseUrl = await getBaseUrl("kdramasmaza");
   const url = new URL(filter || "/", baseUrl);
-
   if (page > 1) {
     url.searchParams.set("page", page.toString());
   }
-
-  return fetchPosts({
-    url: url.toString(),
-    baseUrl,
-    signal,
-    axios,
-    cheerio,
-  });
+  return fetchPosts({ url: url.toString(), signal, cheerio });
 };
 
-exports.getSearchPosts = async function ({
+export const getSearchPosts = async function ({
   searchQuery,
   page,
   signal,
   providerContext,
-}) {
-  const { getBaseUrl, axios, cheerio } = providerContext;
+}: {
+  searchQuery: string;
+  page: number;
+  providerValue: string;
+  signal: AbortSignal;
+  providerContext: ProviderContext;
+}): Promise<Post[]> {
+  const { getBaseUrl, cheerio } = providerContext;
   const baseUrl = await getBaseUrl("kdramasmaza");
   const url = new URL("/", baseUrl);
-
   url.searchParams.set("s", searchQuery);
   if (page > 1) {
     url.searchParams.set("page", page.toString());
   }
-
-  return fetchPosts({
-    url: url.toString(),
-    baseUrl,
-    signal,
-    axios,
-    cheerio,
-  });
+  return fetchPosts({ url: url.toString(), signal, cheerio });
 };
 
-async function fetchPosts({ url, baseUrl, signal, axios, cheerio }) {
+async function fetchPosts({
+  url,
+  signal,
+  cheerio,
+}: {
+  url: string;
+  signal: AbortSignal;
+  cheerio: ProviderContext["cheerio"];
+}): Promise<Post[]> {
   try {
-    const response = await axios.get(url, {
+    const response = await fetch(url, {
       headers: defaultHeaders,
       signal,
     });
-    const $ = cheerio.load(response.data || "");
-    const posts = [];
-    const seen = new Set();
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const posts: Post[] = [];
+    const seenLinks = new Set<string>();
 
-    const pushPost = ({ title, link, image }) => {
-      if (!title || !link || seen.has(link)) {
-        return;
-      }
+    // Strategy 1: Find post containers using common WordPress theme selectors
+    const containerSelectors = [
+      "article",
+      ".post",
+      ".post-item",
+      ".item",
+      ".post-box",
+      ".blog-post",
+      ".grid-item",
+      ".post-card",
+      ".entry",
+      ".hentry",
+      ".post-container",
+      ".recent-posts > *",
+      ".posts-wrapper > *",
+      ".main-content > *",
+      "#content > *",
+      "main > *",
+      ".post-listing > *",
+      ".loop-item",
+      ".post-holder",
+    ];
 
-      seen.add(link);
-      posts.push({
-        title: title.replace(/\s+/g, " ").trim(),
-        link: /^https?:\/\//i.test(link) ? link : new URL(link, baseUrl).href,
-        image: image
-          ? /^https?:\/\//i.test(image)
-            ? image
-            : new URL(image, baseUrl).href
-          : "",
-      });
-    };
+    for (const selector of containerSelectors) {
+      if (posts.length > 0) break;
+      $(selector).each((_, el) => {
+        const container = $(el);
+        const link =
+          container.find("a").first().attr("href") || "";
+        if (!link || seenLinks.has(link)) return;
 
-    $("article, .post, .post-item, .item").each((_, el) => {
-      const article = $(el);
-      const titleLink = article
-        .find("a[rel='bookmark'], .entry-title a, h1 a, h2 a, h3 a, h4 a")
-        .first();
-      const fallbackLink = article.find("a[href]").first();
-      const imageEl = article
-        .find("img[src], img[data-src], img[data-lazy-src]")
-        .first();
-
-      const title =
-        titleLink.text().trim() ||
-        titleLink.attr("title") ||
-        fallbackLink.attr("title") ||
-        imageEl.attr("alt") ||
-        "";
-      const link = titleLink.attr("href") || fallbackLink.attr("href");
-      const image =
-        imageEl.attr("src") ||
-        imageEl.attr("data-src") ||
-        imageEl.attr("data-lazy-src") ||
-        "";
-
-      pushPost({ title, link, image });
-    });
-
-    if (posts.length === 0) {
-      $("a[href]").each((_, el) => {
-        const anchor = $(el);
-        const href = anchor.attr("href") || "";
-        const imageEl = anchor.find("img").first();
-        const title =
-          anchor.text().trim() ||
-          anchor.attr("title") ||
-          imageEl.attr("alt") ||
-          "";
-        const image =
-          imageEl.attr("src") ||
-          imageEl.attr("data-src") ||
-          imageEl.attr("data-lazy-src") ||
+        let title =
+          container.find("h2 a, h3 a, h4 a, .entry-title a, .post-title a, .post-title")
+            .first().text().trim() ||
+          container.find("a").first().attr("title") ||
+          container.find("img").first().attr("alt") ||
           "";
 
-        if (
-          href &&
-          /^https?:\/\/kdramasmaza\.net\//i.test(href) &&
-          !href.includes("#") &&
-          !href.includes("/category/") &&
-          !href.includes("/author/")
-        ) {
-          pushPost({ title, link: href, image });
+        let image =
+          container.find("img").first().attr("data-lazy-src") ||
+          container.find("img").first().attr("data-src") ||
+          container.find("img").first().attr("src") ||
+          "";
+
+        if (image.startsWith("//")) {
+          image = "https:" + image;
+        }
+
+        if (title && link && image && !link.includes("#") && !link.includes("mailto:")) {
+          seenLinks.add(link);
+          posts.push({
+            title: title.replace(/Download/gi, "").replace(/\s+/g, " ").trim(),
+            link,
+            image,
+          });
         }
       });
     }
 
+    // Strategy 2: Match image+text anchors by shared URL
     if (posts.length === 0) {
-      const rootUrl = new URL("/", new URL(url).origin).toString();
-      if (url !== rootUrl) {
-        return fetchPosts({
-          url: rootUrl,
-          baseUrl,
-          signal,
-          axios,
-          cheerio,
-        });
+      const imageAnchors = new Map<string, string>();
+      const textAnchors = new Map<string, string>();
+
+      $("a[href]").each((_, el) => {
+        const anchor = $(el);
+        const href = anchor.attr("href") || "";
+        if (!href || href.includes("#") || href.includes("mailto:")) return;
+        if (!href.includes("kdramasmaza.net") && !href.startsWith("/")) return;
+
+        const img = anchor.find("img").first();
+        if (img.length) {
+          const src = img.attr("data-lazy-src") || img.attr("data-src") || img.attr("src") || "";
+          if (src) {
+            const normalized = href.startsWith("http") ? href : new URL(href, url).href;
+            if (!imageAnchors.has(normalized)) {
+              imageAnchors.set(normalized, src.startsWith("//") ? "https:" + src : src);
+            }
+          }
+        } else {
+          const text = anchor.text().trim();
+          if (text && text.length > 3) {
+            const normalized = href.startsWith("http") ? href : new URL(href, url).href;
+            if (!textAnchors.has(normalized)) {
+              textAnchors.set(normalized, text);
+            }
+          }
+        }
+      });
+
+      const allUrls = new Set([...imageAnchors.keys(), ...textAnchors.keys()]);
+      for (const postUrl of allUrls) {
+        if (seenLinks.has(postUrl)) continue;
+        const imgSrc = imageAnchors.get(postUrl) || "";
+        const title = textAnchors.get(postUrl) || "";
+        if (title && postUrl && imgSrc) {
+          seenLinks.add(postUrl);
+          posts.push({
+            title: title.replace(/Download/gi, "").replace(/\s+/g, " ").trim(),
+            link: postUrl,
+            image: imgSrc,
+          });
+        }
       }
     }
 
@@ -154,4 +181,4 @@ async function fetchPosts({ url, baseUrl, signal, axios, cheerio }) {
     console.error("kdramasmaza posts error:", error);
     return [];
   }
-}
+          }
