@@ -41487,7 +41487,7 @@ var {
 // providers/getBaseUrl.ts
 var expireTime = 60 * 60 * 1e3;
 var fallbackBaseUrls = {
-  kdramasmaza: "http://kdramasmaza.net",
+  kdramasmaza: "https://kdramasmaza.net",
   katdrama: "https://www.katdrama.net",
   kdhindidubbed: "https://kdhindidubbed.cfd"
 };

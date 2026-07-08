@@ -87,30 +87,57 @@ async function fetchPosts({
     const posts: Post[] = [];
     const seen = new Set<string>();
 
+    const cleanText = (value?: string) =>
+      (value || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+
+    const normalizeUrl = (value?: string) => {
+      const raw = (value || "").trim();
+      if (!raw || raw.startsWith("#") || raw.toLowerCase().startsWith("javascript:")) {
+        return "";
+      }
+      if (raw.startsWith("//")) return `https:${raw}`;
+      return /^https?:\/\//i.test(raw) ? raw : new URL(raw, baseUrl).href;
+    };
+
+    const isContentLink = (link: string) => {
+      try {
+        const parsed = new URL(link);
+        const base = new URL(baseUrl);
+        if (parsed.hostname.replace(/^www\./, "") !== base.hostname.replace(/^www\./, "")) {
+          return false;
+        }
+        const path = parsed.pathname.replace(/\/$/, "");
+        return !!path && !/\/(category|tag|author|search|page|wp-admin|wp-content|wp-json)(\/|$)/i.test(path);
+      } catch {
+        return false;
+      }
+    };
+
     const pushPost = ({
       title,
       link,
       image,
     }: {
-      title: string;
+      title?: string;
       link?: string;
       image?: string;
     }) => {
-      if (!title || !link || seen.has(link)) {
+      const normalizedLink = normalizeUrl(link);
+      const normalizedTitle = cleanText(title);
+      if (
+        !normalizedTitle ||
+        !normalizedLink ||
+        !isContentLink(normalizedLink) ||
+        seen.has(normalizedLink)
+      ) {
         return;
       }
 
-      seen.add(link);
+      seen.add(normalizedLink);
       posts.push({
-        title: title.replace(/\s+/g, " ").trim(),
-        link: /^https?:\/\//i.test(link)
-          ? link
-          : new URL(link, baseUrl).href,
-        image: image
-          ? /^https?:\/\//i.test(image)
-            ? image
-            : new URL(image, baseUrl).href
-          : "",
+        title: normalizedTitle,
+        link: normalizedLink,
+        image: normalizeUrl(image),
       });
     };
 
@@ -129,6 +156,7 @@ async function fetchPosts({
         titleLink.attr("title") ||
         fallbackLink.attr("title") ||
         imageEl.attr("alt") ||
+        imageEl.attr("title") ||
         "";
       const link = titleLink.attr("href") || fallbackLink.attr("href");
       const image =
@@ -156,13 +184,7 @@ async function fetchPosts({
           imageEl.attr("data-lazy-src") ||
           "";
 
-        if (
-          href &&
-          /^https?:\/\/kdramasmaza\.net\//i.test(href) &&
-          !href.includes("#") &&
-          !href.includes("/category/") &&
-          !href.includes("/author/")
-        ) {
+        if (href) {
           pushPost({ title, link: href, image });
         }
       });
