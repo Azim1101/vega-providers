@@ -8,10 +8,11 @@ async function getWithWAF(
 ): Promise<any> {
   const baseUrl = url.split("/").slice(0, 3).join("/");
   try {
-    return await axios.get(url, { headers: { ...headers, Referer: baseUrl } });
+    return await axios.get(url, {
+      headers: { ...headers, Referer: baseUrl },
+    });
   } catch (error: any) {
     if (error.response?.status === 403 && openWebView) {
-      console.log(`WAF detected (403) for ${url}, using solver...`);
       const wafResult = await openWebView(baseUrl, {
         title: "Solve the captcha below and click done",
         description: "Required to bypass anti-bot protection.",
@@ -19,12 +20,25 @@ async function getWithWAF(
         force: true,
         waitForCookie: "cf_clearance",
       });
+      const cookie = wafResult?.cookies || wafResult?.cookie || "";
       return await axios.get(url, {
-        headers: { ...headers, Referer: baseUrl, Cookie: wafResult.cookies },
+        headers: { ...headers, Referer: baseUrl, Cookie: cookie },
       });
     }
     throw error;
   }
+}
+
+function qualityFrom(text: string): string {
+  return text.match(/\b(2160p|1080p|720p|480p|360p)\b/i)?.[0] || "";
+}
+
+function cleanText(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/&#8211;/g, "–")
+    .trim();
 }
 
 export const getMeta = async function ({
@@ -36,108 +50,125 @@ export const getMeta = async function ({
 }): Promise<Info> {
   try {
     const { axios, cheerio, openWebView, commonHeaders } = providerContext;
-    const url = link;
-    const res = await getWithWAF(url, axios, openWebView, commonHeaders);
-    const data = res.data;
-    const $ = cheerio.load(data);
-    const container = $(".yQ8hqd.ksSzJd.LoQAYe").html()
-      ? $(".yQ8hqd.ksSzJd.LoQAYe")
-      : $(".FxvUNb");
+    const res = await getWithWAF(link, axios, openWebView, commonHeaders);
+    const $ = cheerio.load(res.data);
+    const pageHtml = $.html();
+
+    const title =
+      cleanText($("h1.entry-title").text() || $("h1").first().text()) ||
+      cleanText($("title").text());
+
+    let synopsis = "";
+    $(".entry-content p, .post-content p, article .entry-content p").each(
+      (_, el) => {
+        if (synopsis) return;
+        const t = cleanText($(el).text());
+        if (t.length > 40 && !/download|telegram|how to|join/i.test(t)) {
+          synopsis = t;
+        }
+      },
+    );
+
+    let image =
+      $(".entry-content img, .post-thumb img, article img")
+        .filter((_, el) => {
+          const src = $(el).attr("src") || "";
+          return !!src && !/logo|icon|svg|emoji|telegram/i.test(src);
+        })
+        .first()
+        .attr("src") ||
+      $("meta[property='og:image']").attr("content") ||
+      "";
+
     const imdbId =
-      container
-        .find('a[href*="imdb.com/title/tt"]:not([href*="imdb.com/title/tt/"])')
+      $('a[href*="imdb.com/title/"]')
         .attr("href")
-        ?.split("/")[4] || "";
-    const title = container
-      .find('li:contains("Name")')
-      .children()
-      .remove()
-      .end()
-      .text();
-    const type = $(".yQ8hqd.ksSzJd.LoQAYe").html() ? "series" : "movie";
-    const synopsis = container.find('li:contains("Stars")').text();
-    const image =
-      $('h4:contains("SCREENSHOTS")').next().find("img").attr("src") || "";
+        ?.match(/tt\d+/)?.[0] || "";
 
-    console.log("katGetInfo", title, synopsis, image, imdbId, type);
+    const type = /episode|season|drama|series/i.test(title + " " + synopsis)
+      ? "series"
+      : "movie";
 
-    // Links
     const links: Link[] = [];
-    const directLink: Link["directLinks"] = [];
+    const seen = new Set<string>();
 
-    // direct links
-    $(".entry-content")
-      .find('p:contains("Episode")')
-      .each((i, element) => {
-        const dlLink =
-          $(element)
-            .nextAll("h3,h2")
-            .first()
-            .find('a:contains("1080"),a:contains("720"),a:contains("480")')
-            .attr("href") || "";
-        const dlTitle = $(element).find("span").text();
-
-        if (link.trim().length > 0 && dlTitle.includes("Episode ")) {
-          directLink.push({
-            title: dlTitle,
-            link: dlLink,
-          });
-        }
-      });
-
-    if (directLink.length > 0) {
+    // onclick buttons -> archive pages
+    const onclickRe = /window\.location\.href\s*=\s*['"]([^'"]+)['"]/gi;
+    let m: RegExpExecArray | null;
+    while ((m = onclickRe.exec(pageHtml))) {
+      const href = m[1];
+      if (seen.has(href)) continue;
+      if (!/archives\/\d+|kdramasmaza\.com\.pk/i.test(href)) continue;
+      seen.add(href);
+      const around = pageHtml.slice(Math.max(0, m.index - 160), m.index + 80);
+      const btnText =
+        around.match(/>([^<>]{2,80})<\/button>/i)?.[1]?.trim() ||
+        (/zip/i.test(around)
+          ? "Zip Download"
+          : /episode/i.test(around)
+            ? "All Episodes"
+            : "Download");
       links.push({
-        quality: "",
-        title: title,
-        directLinks: directLink,
+        title: cleanText(btnText),
+        quality: qualityFrom(btnText),
+        episodesLink: href,
       });
     }
 
-    $(".entry-content")
-      .find("pre")
-      .nextUntil("div")
-      .filter("h2")
-      .each((i, element) => {
-        const link = $(element).find("a").attr("href");
-        const quality =
-          $(element)
-            .text()
-            .match(/\b(480p|720p|1080p|2160p)\b/i)?.[0] || "";
-        const title = $(element).text();
-        if (link && title.includes("")) {
-          links.push({
-            quality,
-            title,
-            episodesLink: link,
-          });
-        }
-      });
-
-    if (links.length === 0 && type === "movie") {
-      $(".entry-content")
-        .find('h2:contains("DOWNLOAD"),h3:contains("DOWNLOAD")')
-        .nextUntil("pre,div")
-        .filter("h2")
-        .each((i, element) => {
-          const link = $(element).find("a").attr("href");
-          const quality =
-            $(element)
-              .text()
-              .match(/\b(480p|720p|1080p|2160p)\b/i)?.[0] || "";
-          const title = $(element).text();
-          if (link && !title.includes("Online")) {
-            links.push({
-              quality,
-              title,
-              directLinks: [{ link, title, type: "movie" }],
-            });
-          }
+    // anchors only if archive/hoster and not random posts
+    $("a[href]").each((_, el) => {
+      const href = ($(el).attr("href") || "").trim();
+      const text = cleanText($(el).text() || $(el).find("button").text());
+      if (!href) return;
+      const abs = href.startsWith("http")
+        ? href
+        : new URL(href, link).toString();
+      if (seen.has(abs)) return;
+      if (
+        /how-to-download|telegram|t\.me|facebook|twitter|instagram|wordpress|\/category\/|\/tag\//i.test(
+          abs,
+        )
+      ) {
+        return;
+      }
+      // Ignore same-site drama post links that aren't archive download pages
+      if (
+        abs.includes("kdramasmaza.net") &&
+        !/archives\//i.test(abs) &&
+        abs.replace(/\/$/, "") !== link.replace(/\/$/, "")
+      ) {
+        return;
+      }
+      const isArchive = /archives\/\d+/i.test(abs) || /kdramasmaza\.com\.pk\/archives/i.test(abs);
+      const isHoster =
+        /(hubcloud|gdflix|send\.cm|drive\.google|pixeldrain|mediafire|mega\.nz)/i.test(
+          abs,
+        );
+      if (!isArchive && !isHoster) return;
+      seen.add(abs);
+      if (isArchive) {
+        links.push({
+          title: text || "Download",
+          quality: qualityFrom(text),
+          episodesLink: abs,
         });
-    }
+      } else {
+        links.push({
+          title: text || "Link",
+          quality: qualityFrom(text),
+          directLinks: [
+            {
+              title: text || "Link",
+              link: abs,
+              type: type === "series" ? "series" : "movie",
+            },
+          ],
+        });
+      }
+    });
 
-    // console.log('drive meta', title, synopsis, image, imdbId, type, links);
     return {
-      title,
+      title: title || "Untitled",
       synopsis,
       image,
       imdbId,
@@ -145,7 +176,7 @@ export const getMeta = async function ({
       linkList: links,
     };
   } catch (err) {
-    console.error(err);
+    console.error("kdramasmaza getMeta error", err);
     return {
       title: "",
       synopsis: "",

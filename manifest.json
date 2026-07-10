@@ -346,7 +346,7 @@
   {
     "display_name": "KatDrama",
     "value": "katdrama",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "",
     "type": "global",
     "disabled": false
@@ -354,7 +354,7 @@
   {
     "display_name": "KDHindiDubbed",
     "value": "kdhindidubbed",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "",
     "type": "global",
     "disabled": false
@@ -362,7 +362,7 @@
   {
     "display_name": "KDramasMaza",
     "value": "kdramasmaza",
-    "version": "1.1",
+    "version": "1.2",
     "icon": "",
     "type": "global",
     "disabled": false

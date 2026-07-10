@@ -13,7 +13,6 @@ async function getWithWAF(
     return await axios.get(url, { headers: mergedHeaders });
   } catch (error: any) {
     if (error.response?.status === 403 && openWebView) {
-      console.log(`WAF detected (403) for ${url}, using solver...`);
       const wafResult = await openWebView(baseUrl, {
         title: "Solve the captcha below and click done",
         description: "Required to bypass anti-bot protection.",
@@ -21,12 +20,11 @@ async function getWithWAF(
         force: true,
         waitForCookie: "cf_clearance",
       });
+      const cookie = wafResult?.cookies || wafResult?.cookie || "";
       return await axios.get(url, {
         headers: {
           ...mergedHeaders,
-          Cookie:
-            (mergedHeaders.Cookie ? mergedHeaders.Cookie + "; " : "") +
-            wafResult.cookies,
+          Cookie: (mergedHeaders.Cookie ? mergedHeaders.Cookie + "; " : "") + cookie,
         },
       });
     }
@@ -41,76 +39,63 @@ export const getEpisodes = async function ({
   url: string;
   providerContext: ProviderContext;
 }): Promise<EpisodeLink[]> {
-  const { axios, cheerio, openWebView, commonHeaders } = providerContext;
-  const episodesLink: EpisodeLink[] = [];
   try {
-    if (url.includes("gdflix")) {
-      const baseUrl = url.split("/pack")?.[0];
-      const res = await getWithWAF(url, axios, openWebView, commonHeaders);
-      const data = res.data;
-      const $ = cheerio.load(data);
-      const links = $(".list-group-item");
-      links?.map((i, link) => {
-        episodesLink.push({
-          title: $(link).text() || "",
-          link: baseUrl + $(link).find("a").attr("href") || "",
+    const { axios, cheerio, openWebView, commonHeaders } = providerContext;
+    // kmhd pack pages are SPA; try __data.json first
+    const candidates = [
+      url.replace(/\/$/, "") + "/__data.json",
+      url,
+    ];
+    let html = "";
+    for (const u of candidates) {
+      try {
+        const res = await getWithWAF(u, axios, openWebView, commonHeaders, {
+          Cookie: "unlocked=true",
         });
-      });
-      if (episodesLink.length > 0) {
-        return episodesLink;
+        html = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+        if (html && html.length > 50) break;
+      } catch {
+        // try next
       }
     }
-    if (url.includes("/pack")) {
-      const epIds = await extractKmhdEpisodes(url, providerContext);
-      epIds?.forEach((id: string, index: number) => {
-        episodesLink.push({
-          title: `Episode ${index + 1}`,
-          link: url.split("/pack")[0] + "/file/" + id,
-        });
-      });
-    }
-    const res = await getWithWAF(url, axios, openWebView, commonHeaders, {
-      Cookie:
-        "_ga_GNR438JY8N=GS1.1.1722240350.5.0.1722240350.0.0.0; _ga=GA1.1.372196696.1722150754; unlocked=true",
-    });
-    const episodeData = res.data;
-    const $ = cheerio.load(episodeData);
-    const links = $(".autohyperlink");
-    links?.map((i, link) => {
-      episodesLink.push({
-        title: $(link).parent().children().remove().end().text() || "",
-        link: $(link).attr("href") || "",
-      });
+
+    const $ = cheerio.load(html);
+    const episodes: EpisodeLink[] = [];
+    const seen = new Set<string>();
+
+    // From anchors
+    $("a[href]").each((_, el) => {
+      const href = ($(el).attr("href") || "").trim();
+      const title = $(el).text().replace(/\s+/g, " ").trim() || "Episode";
+      if (!href) return;
+      const abs = href.startsWith("http") ? href : "";
+      if (!abs) return;
+      if (
+        !/(kmhd|hubcloud|gdflix|drive\.google|pixeldrain|filepress|gofile|mediafire|mega\.nz)/i.test(
+          abs,
+        )
+      ) {
+        return;
+      }
+      if (seen.has(abs)) return;
+      seen.add(abs);
+      episodes.push({ title, link: abs });
     });
 
-    return episodesLink;
+    // Regex fallback for hubdrive/hubcloud style payloads
+    const hubMatches = html.matchAll(
+      /https?:\/\/[^\s"'\\]+(?:hubcloud|hubdrive|gdflix|pixeldrain|filepress)[^\s"'\\]*/gi,
+    );
+    for (const m of hubMatches) {
+      const href = m[0].replace(/\\+$/, "");
+      if (seen.has(href)) continue;
+      seen.add(href);
+      episodes.push({ title: "Link", link: href });
+    }
+
+    return episodes;
   } catch (err) {
-    console.error(err);
+    console.error("katdrama getEpisodes error", err);
     return [];
   }
 };
-
-export async function extractKmhdLink(
-  katlink: string,
-  providerContext: ProviderContext,
-) {
-  const { axios, openWebView, commonHeaders } = providerContext;
-  const res = await getWithWAF(katlink, axios, openWebView, commonHeaders);
-  const data = res.data;
-  const hubDriveRes = data.match(/hubdrive_res:\s*"([^"]+)"/)[1];
-  const hubDriveLink = data.match(
-    /hubdrive_res\s*:\s*{[^}]*?link\s*:\s*"([^"]+)"/,
-  )[1];
-  return hubDriveLink + hubDriveRes;
-}
-
-async function extractKmhdEpisodes(
-  katlink: string,
-  providerContext: ProviderContext,
-) {
-  const { axios, openWebView, commonHeaders } = providerContext;
-  const res = await getWithWAF(katlink, axios, openWebView, commonHeaders);
-  const data = res.data;
-  const ids = data.match(/[\w]+_[a-f0-9]{8}/g);
-  return ids;
-}
