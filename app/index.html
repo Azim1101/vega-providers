@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b1020" />
+    <meta
+      name="description"
+      content="Vega Providers frontend — browse and test providers directly from GitHub Pages. No clone needed."
+    />
+    <title>Vega Providers</title>
+    <link rel="stylesheet" href="./css/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cff'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' font-size='34' fill='white' font-family='Arial'%3EV%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" id="goHome" role="button" tabindex="0">
+          <div class="logo">V</div>
+          <div>
+            <div class="brand-title">Vega Providers</div>
+            <div class="brand-sub" id="repoLabel">Loading…</div>
+          </div>
+        </div>
+
+        <div class="search-wrap">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search movies / shows…"
+            autocomplete="off"
+          />
+          <button id="searchBtn" class="btn primary">Search</button>
+        </div>
+
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+          ⚙
+        </button>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-head">
+            <h2>Providers</h2>
+            <span class="badge" id="providerCount">0</span>
+          </div>
+          <input
+            id="providerFilter"
+            class="sidebar-filter"
+            type="search"
+            placeholder="Filter providers…"
+          />
+          <div id="providerList" class="provider-list"></div>
+        </aside>
+
+        <section class="content">
+          <div id="statusBar" class="status-bar">
+            Select a provider to load categories.
+          </div>
+
+          <div id="catalogTabs" class="tabs hidden"></div>
+
+          <div id="grid" class="grid"></div>
+
+          <div id="emptyState" class="empty">
+            <div class="empty-icon">🎬</div>
+            <h3>Browse providers from GitHub</h3>
+            <p>
+              This frontend loads <code>manifest.json</code> and
+              <code>dist/</code> modules directly from the repository. No clone
+              or local server required.
+            </p>
+          </div>
+
+          <div id="loader" class="loader hidden">
+            <div class="spinner"></div>
+            <span>Loading…</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Detail drawer -->
+    <div id="detailOverlay" class="overlay hidden">
+      <div class="detail-panel" role="dialog" aria-modal="true">
+        <button id="closeDetail" class="icon-btn close-btn" aria-label="Close">✕</button>
+        <div id="detailBody" class="detail-body">
+          <div class="loader inline"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings modal -->
+    <div id="settingsOverlay" class="overlay hidden">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Settings</h3>
+          <button id="closeSettings" class="icon-btn" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span>GitHub owner</span>
+            <input id="cfgOwner" type="text" placeholder="Azim1101" />
+          </label>
+          <label class="field">
+            <span>Repository</span>
+            <input id="cfgRepo" type="text" placeholder="vega-providers" />
+          </label>
+          <label class="field">
+            <span>Branch</span>
+            <input id="cfgBranch" type="text" placeholder="main" />
+          </label>
+          <p class="hint">
+            Files are fetched from
+            <code>https://raw.githubusercontent.com/&lt;owner&gt;/&lt;repo&gt;/&lt;branch&gt;/</code>
+          </p>
+          <p class="hint warn">
+            Note: many provider sites block browser CORS. Search/posts may work
+            only for providers that allow cross-origin requests, or when a proxy
+            is available.
+          </p>
+        </div>
+        <div class="modal-actions">
+          <button id="resetCfg" class="btn ghost">Reset</button>
+          <button id="saveCfg" class="btn primary">Save & Reload</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional browser shims (axios/cheerio-like) loaded by app.js -->
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
