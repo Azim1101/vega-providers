@@ -4,6 +4,8 @@ const DEFAULTS = {
   owner: "Azim1101",
   repo: "vega-providers",
   branch: "main",
+  proxyOn: true,
+  proxy: "https://corsproxy.io/?url=",
 };
 
 const state = {
@@ -15,7 +17,7 @@ const state = {
   activeFilter: "",
   activeFilterTitle: "Latest",
   posts: [],
-  mode: "home", // home | search | detail
+  mode: "home",
   searchQuery: "",
   moduleCache: new Map(),
 };
@@ -40,10 +42,14 @@ const els = {
   cfgOwner: document.getElementById("cfgOwner"),
   cfgRepo: document.getElementById("cfgRepo"),
   cfgBranch: document.getElementById("cfgBranch"),
+  cfgProxyOn: document.getElementById("cfgProxyOn"),
+  cfgProxy: document.getElementById("cfgProxy"),
   detailOverlay: document.getElementById("detailOverlay"),
   detailBody: document.getElementById("detailBody"),
   closeDetail: document.getElementById("closeDetail"),
   goHome: document.getElementById("goHome"),
+  helpBanner: document.getElementById("helpBanner"),
+  dismissHelp: document.getElementById("dismissHelp"),
 };
 
 function loadConfig() {
@@ -51,13 +57,12 @@ function loadConfig() {
     const raw = localStorage.getItem("vegaProvidersCfg");
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
   } catch {}
-  // Auto-detect if hosted on github.io / raw pages path
   const host = location.hostname;
   if (host.endsWith("github.io")) {
     const owner = host.replace(".github.io", "");
     const parts = location.pathname.split("/").filter(Boolean);
     const repo = parts[0] || DEFAULTS.repo;
-    return { owner, repo, branch: "main" };
+    return { ...DEFAULTS, owner, repo, branch: "main" };
   }
   return { ...DEFAULTS };
 }
@@ -81,14 +86,14 @@ function jsDelivrUrl(path) {
 
 async function fetchText(path) {
   const urls = [
-    `${baseRawUrl()}/${path.replace(/^\//, "")}`,
     jsDelivrUrl(path),
+    `${baseRawUrl()}/${path.replace(/^\//, "")}`,
   ];
   let lastErr;
   for (const url of urls) {
     try {
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText} @ ${url}`);
       return await res.text();
     } catch (err) {
       lastErr = err;
@@ -98,8 +103,7 @@ async function fetchText(path) {
 }
 
 async function fetchJson(path) {
-  const text = await fetchText(path);
-  return JSON.parse(text);
+  return JSON.parse(await fetchText(path));
 }
 
 function setStatus(msg, type = "") {
@@ -113,20 +117,22 @@ function setLoading(on) {
 }
 
 function updateRepoLabel() {
-  const { owner, repo, branch } = state.cfg;
-  els.repoLabel.textContent = `${owner}/${repo}@${branch}`;
+  const { owner, repo, branch, proxyOn } = state.cfg;
+  els.repoLabel.textContent = `${owner}/${repo}@${branch}${
+    proxyOn ? " · proxy on" : " · proxy off"
+  }`;
+}
+
+function currentProxy() {
+  return state.cfg.proxyOn ? state.cfg.proxy || "" : "";
 }
 
 function createProviderContext() {
-  const axios = createAxios();
+  const axios = createAxios(() => currentProxy());
   const cheerio = createCheerio();
   const commonHeaders = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
   };
-
-  // getBaseUrl from dist if available, else fallback map from modflix later
   let getBaseUrl = async () => "";
   return {
     axios,
@@ -135,10 +141,9 @@ function createProviderContext() {
     Aes: null,
     openWebView: async () => {
       throw new Error(
-        "WAF/captcha solving (openWebView) is not available in the browser demo",
+        "Captcha/WAF solver browser me available nahi hai. Mobile Vega app me hota hai.",
       );
     },
-    // filled after modules load
     get getBaseUrl() {
       return getBaseUrl;
     },
@@ -157,21 +162,11 @@ async function ensureGetBaseUrl() {
     const mod = loadCommonJsModule(src, "getBaseUrl.js");
     if (typeof mod.getBaseUrl === "function") {
       providerContext.getBaseUrl = mod.getBaseUrl.bind(mod);
-    } else if (typeof mod === "function") {
-      providerContext.getBaseUrl = mod;
     } else {
-      // try reading BASE_URLS from source via Function after export patch
-      const m2 = loadCommonJsModule(
-        src.replace(
-          /module\.exports\s*=\s*__toCommonJS\([^)]+\);?/,
-          "module.exports = { getBaseUrl };",
-        ),
-        "getBaseUrl-fallback.js",
-      );
-      if (m2.getBaseUrl) providerContext.getBaseUrl = m2.getBaseUrl;
+      providerContext.getBaseUrl = async () => "";
     }
   } catch (err) {
-    console.warn("getBaseUrl load failed, using empty fallback", err);
+    console.warn("getBaseUrl load failed", err);
     providerContext.getBaseUrl = async () => "";
   }
   providerContext._ready = true;
@@ -247,7 +242,11 @@ function renderPosts() {
     if (!state.activeProvider) {
       els.emptyState.classList.remove("hidden");
     } else {
-      els.grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><h3>No posts</h3><p>This provider returned an empty list. CORS or site protection may be blocking browser requests.</p></div>`;
+      els.grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+        <h3>No posts loaded</h3>
+        <p>Provider ne empty list di, ya browser ne site block ki (CORS).</p>
+        <p class="hint warn">Fix: Settings → <b>Enable CORS Proxy</b> ON → Save & Reload → provider dubara select karo.</p>
+      </div>`;
     }
     return;
   }
@@ -280,8 +279,11 @@ function escapeAttr(s) {
 
 async function init() {
   updateRepoLabel();
+  if (localStorage.getItem("vegaHelpDismissed") === "1") {
+    els.helpBanner?.classList.add("hidden");
+  }
   setLoading(true);
-  setStatus("Loading manifest from GitHub…");
+  setStatus("GitHub se manifest load ho raha hai…");
   try {
     await ensureGetBaseUrl();
     const manifest = await fetchJson("manifest.json");
@@ -294,15 +296,18 @@ async function init() {
       );
     renderProviders();
     setStatus(
-      `Loaded ${state.providers.length} providers from ${state.cfg.owner}/${state.cfg.repo}`,
+      `${state.providers.length} providers load ho gaye · pehle KatDrama try karo`,
       "ok",
     );
-    // auto-select first enabled provider
-    const first = state.providers.find((p) => !p.disabled);
-    if (first) await selectProvider(first.value);
+
+    // Prefer drama providers for demo if present
+    const preferred =
+      state.providers.find((p) => p.value === "katdrama" && !p.disabled) ||
+      state.providers.find((p) => !p.disabled);
+    if (preferred) await selectProvider(preferred.value);
   } catch (err) {
     console.error(err);
-    setStatus(`Failed to load manifest: ${err.message}`, "error");
+    setStatus(`Manifest load fail: ${err.message}`, "error");
     els.emptyState.classList.remove("hidden");
   } finally {
     setLoading(false);
@@ -318,13 +323,13 @@ async function selectProvider(value) {
   els.searchInput.value = "";
   renderProviders(els.providerFilter.value);
   setLoading(true);
-  setStatus(`Loading catalog for ${provider.display_name}…`);
+  setStatus(`${provider.display_name} catalog load ho raha hai…`);
   try {
     const catalogMod = await loadProviderModule(provider.value, "catalog");
     state.catalog = catalogMod.catalog || [];
     state.genres = catalogMod.genres || [];
     if (!state.catalog.length) {
-      throw new Error("Catalog is empty / failed to export catalog");
+      throw new Error("Catalog empty / export fail");
     }
     state.activeFilter = state.catalog[0].filter ?? "";
     state.activeFilterTitle = state.catalog[0].title || "Latest";
@@ -338,7 +343,7 @@ async function selectProvider(value) {
     renderTabs();
     renderPosts();
     setStatus(
-      `Failed to load categories for ${provider.display_name}: ${err.message}`,
+      `${provider.display_name} categories fail: ${err.message}`,
       "error",
     );
   } finally {
@@ -358,7 +363,7 @@ async function loadPosts() {
     let posts = [];
     if (state.mode === "search") {
       if (typeof postsMod.getSearchPosts !== "function") {
-        throw new Error("Provider has no getSearchPosts()");
+        throw new Error("Provider me getSearchPosts nahi hai");
       }
       posts = await postsMod.getSearchPosts({
         searchQuery: state.searchQuery,
@@ -368,14 +373,12 @@ async function loadPosts() {
         providerContext,
       });
       setStatus(
-        `Search “${state.searchQuery}” on ${provider.display_name}: ${
-          posts?.length || 0
-        } results`,
+        `Search “${state.searchQuery}” · ${posts?.length || 0} results`,
         posts?.length ? "ok" : "error",
       );
     } else {
       if (typeof postsMod.getPosts !== "function") {
-        throw new Error("Provider has no getPosts()");
+        throw new Error("Provider me getPosts nahi hai");
       }
       posts = await postsMod.getPosts({
         filter: state.activeFilter || "",
@@ -387,7 +390,7 @@ async function loadPosts() {
       setStatus(
         `${provider.display_name} · ${state.activeFilterTitle}: ${
           posts?.length || 0
-        } posts`,
+        } posts${state.cfg.proxyOn ? " (proxy on)" : ""}`,
         posts?.length ? "ok" : "error",
       );
     }
@@ -397,7 +400,10 @@ async function loadPosts() {
     console.error(err);
     state.posts = [];
     renderPosts();
-    setStatus(`Posts failed: ${err.message}`, "error");
+    setStatus(
+      `Posts fail: ${err.message}. Settings me CORS Proxy ON karke try karo.`,
+      "error",
+    );
   } finally {
     setLoading(false);
   }
@@ -405,7 +411,7 @@ async function loadPosts() {
 
 async function openDetail(post) {
   els.detailOverlay.classList.remove("hidden");
-  els.detailBody.innerHTML = `<div class="loader inline"><div class="spinner"></div><span>Loading details…</span></div>`;
+  els.detailBody.innerHTML = `<div class="loader inline"><div class="spinner"></div><span>Details load ho rahe hain…</span></div>`;
   const provider = state.activeProvider;
   try {
     const metaMod = await loadProviderModule(provider.value, "meta");
@@ -438,7 +444,7 @@ async function openDetail(post) {
 
     const linkListEl = els.detailBody.querySelector("#linkList");
     if (!links.length) {
-      linkListEl.innerHTML = `<div class="hint">No linkList returned by provider meta.</div>`;
+      linkListEl.innerHTML = `<div class="hint">Meta ne linkList nahi diya. Browser CORS/WAF issue ho sakta hai.</div>`;
       return;
     }
 
@@ -483,9 +489,9 @@ async function openDetail(post) {
     }
   } catch (err) {
     console.error(err);
-    els.detailBody.innerHTML = `<div class="empty"><h3>Failed to load details</h3><p>${escapeHtml(
+    els.detailBody.innerHTML = `<div class="empty"><h3>Details fail</h3><p>${escapeHtml(
       err.message,
-    )}</p><p class="hint warn">Browser CORS or WAF may block meta requests.</p></div>`;
+    )}</p><p class="hint warn">CORS Proxy ON karke try karo. Full streaming ke liye Vega mobile app better hai.</p></div>`;
   }
 }
 
@@ -561,6 +567,10 @@ els.providerList.addEventListener("click", (e) => {
   selectProvider(btn.dataset.value);
 });
 
+document.querySelectorAll(".chip-btn").forEach((btn) => {
+  btn.addEventListener("click", () => selectProvider(btn.dataset.jump));
+});
+
 els.providerFilter.addEventListener("input", () => {
   renderProviders(els.providerFilter.value);
 });
@@ -599,6 +609,8 @@ els.settingsBtn.addEventListener("click", () => {
   els.cfgOwner.value = state.cfg.owner;
   els.cfgRepo.value = state.cfg.repo;
   els.cfgBranch.value = state.cfg.branch;
+  els.cfgProxyOn.checked = !!state.cfg.proxyOn;
+  els.cfgProxy.value = state.cfg.proxy || "";
   els.settingsOverlay.classList.remove("hidden");
 });
 els.closeSettings.addEventListener("click", () =>
@@ -611,12 +623,16 @@ els.resetCfg.addEventListener("click", () => {
   els.cfgOwner.value = DEFAULTS.owner;
   els.cfgRepo.value = DEFAULTS.repo;
   els.cfgBranch.value = DEFAULTS.branch;
+  els.cfgProxyOn.checked = DEFAULTS.proxyOn;
+  els.cfgProxy.value = DEFAULTS.proxy;
 });
 els.saveCfg.addEventListener("click", () => {
   state.cfg = {
     owner: els.cfgOwner.value.trim() || DEFAULTS.owner,
     repo: els.cfgRepo.value.trim() || DEFAULTS.repo,
     branch: els.cfgBranch.value.trim() || DEFAULTS.branch,
+    proxyOn: !!els.cfgProxyOn.checked,
+    proxy: els.cfgProxy.value,
   };
   saveConfig(state.cfg);
   location.reload();
@@ -635,6 +651,11 @@ els.goHome.addEventListener("click", () => {
     els.searchInput.value = "";
     loadPosts();
   }
+});
+
+els.dismissHelp?.addEventListener("click", () => {
+  localStorage.setItem("vegaHelpDismissed", "1");
+  els.helpBanner.classList.add("hidden");
 });
 
 init();

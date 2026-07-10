@@ -549,6 +549,65 @@ code {
   color: #ffd29d;
 }
 
+.help-banner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: rgba(124, 92, 255, 0.12);
+  border-bottom: 1px solid rgba(124, 92, 255, 0.28);
+  color: #d9d2ff;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.chip-btn {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip-btn:hover {
+  border-color: rgba(124, 92, 255, 0.5);
+}
+
+.check-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 11px 16px;
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  .help-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

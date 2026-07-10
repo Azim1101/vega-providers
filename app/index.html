@@ -9,11 +9,14 @@
     <meta name="theme-color" content="#0b1020" />
     <meta
       name="description"
-      content="Vega Providers frontend — browse and test providers directly from GitHub Pages. No clone needed."
+      content="Vega Providers frontend — browse providers directly from GitHub Pages. No clone needed."
     />
     <title>Vega Providers</title>
     <link rel="stylesheet" href="./css/styles.css" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cff'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' font-size='34' fill='white' font-family='Arial'%3EV%3C/text%3E%3C/svg%3E" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cff'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' font-size='34' fill='white' font-family='Arial'%3EV%3C/text%3E%3C/svg%3E"
+    />
   </head>
   <body>
     <div class="app-shell">
@@ -36,10 +39,25 @@
           <button id="searchBtn" class="btn primary">Search</button>
         </div>
 
-        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+        <button
+          id="settingsBtn"
+          class="icon-btn"
+          title="Settings"
+          aria-label="Settings"
+        >
           ⚙
         </button>
       </header>
+
+      <div id="helpBanner" class="help-banner">
+        <div>
+          <strong>Kaise use karein:</strong>
+          1) Left se provider select karo (jaise <b>KatDrama</b>)
+          2) Categories / posts load honge
+          3) Agar posts empty aayein to Settings me <b>CORS Proxy ON</b> karo
+        </div>
+        <button id="dismissHelp" class="btn ghost">Samajh gaya</button>
+      </div>
 
       <main class="layout">
         <aside class="sidebar" id="sidebar">
@@ -53,6 +71,11 @@
             type="search"
             placeholder="Filter providers…"
           />
+          <div class="quick-row">
+            <button class="chip-btn" data-jump="katdrama">KatDrama</button>
+            <button class="chip-btn" data-jump="kdhindidubbed">KDHindi</button>
+            <button class="chip-btn" data-jump="kdramasmaza">KDramasMaza</button>
+          </div>
           <div id="providerList" class="provider-list"></div>
         </aside>
 
@@ -69,9 +92,12 @@
             <div class="empty-icon">🎬</div>
             <h3>Browse providers from GitHub</h3>
             <p>
-              This frontend loads <code>manifest.json</code> and
-              <code>dist/</code> modules directly from the repository. No clone
-              or local server required.
+              Ye frontend GitHub se <code>manifest.json</code> aur
+              <code>dist/</code> load karta hai. Clone ki zarurat nahi.
+            </p>
+            <p class="hint warn">
+              Browser me kai sites CORS se block hoti hain. Posts na aayein to
+              Settings → <b>Enable CORS Proxy</b> ON karke Save karo.
             </p>
           </div>
 
@@ -86,7 +112,9 @@
     <!-- Detail drawer -->
     <div id="detailOverlay" class="overlay hidden">
       <div class="detail-panel" role="dialog" aria-modal="true">
-        <button id="closeDetail" class="icon-btn close-btn" aria-label="Close">✕</button>
+        <button id="closeDetail" class="icon-btn close-btn" aria-label="Close">
+          ✕
+        </button>
         <div id="detailBody" class="detail-body">
           <div class="loader inline"><div class="spinner"></div></div>
         </div>
@@ -98,7 +126,9 @@
       <div class="modal">
         <div class="modal-head">
           <h3>Settings</h3>
-          <button id="closeSettings" class="icon-btn" aria-label="Close">✕</button>
+          <button id="closeSettings" class="icon-btn" aria-label="Close">
+            ✕
+          </button>
         </div>
         <div class="modal-body">
           <label class="field">
@@ -113,14 +143,29 @@
             <span>Branch</span>
             <input id="cfgBranch" type="text" placeholder="main" />
           </label>
+
+          <label class="check-field">
+            <input id="cfgProxyOn" type="checkbox" />
+            <span>Enable CORS Proxy (recommended in browser)</span>
+          </label>
+
+          <label class="field">
+            <span>CORS proxy</span>
+            <select id="cfgProxy">
+              <option value="https://corsproxy.io/?url=">
+                corsproxy.io
+              </option>
+              <option value="https://api.allorigins.win/raw?url=">
+                allorigins.win
+              </option>
+              <option value="">None</option>
+            </select>
+          </label>
+
           <p class="hint">
-            Files are fetched from
-            <code>https://raw.githubusercontent.com/&lt;owner&gt;/&lt;repo&gt;/&lt;branch&gt;/</code>
-          </p>
-          <p class="hint warn">
-            Note: many provider sites block browser CORS. Search/posts may work
-            only for providers that allow cross-origin requests, or when a proxy
-            is available.
+            Provider code GitHub se aata hai. Movie websites browser se direct
+            block ho sakti hain (CORS). Proxy un requests ko pass karne me help
+            karta hai.
           </p>
         </div>
         <div class="modal-actions">
@@ -130,7 +175,6 @@
       </div>
     </div>
 
-    <!-- Optional browser shims (axios/cheerio-like) loaded by app.js -->
     <script type="module" src="./js/app.js"></script>
   </body>
 </html>
