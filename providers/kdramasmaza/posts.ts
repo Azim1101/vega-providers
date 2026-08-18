@@ -2,6 +2,10 @@ import { Post, ProviderContext } from "../types";
 import { getBaseUrl } from "../getBaseUrl";
 import { throwProviderError } from "../providerErrors";
 
+// The runtime getBaseUrl() reads urls.json from the upstream repo where the
+// "kdramasmaza" key does not exist yet, so we always fall back to the site.
+const DEFAULT_BASE_URL = "https://kdramasmaza.net";
+
 const headers = {
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -20,6 +24,45 @@ const headers = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
 };
+
+/**
+ * Fetch a page, and if the site answers with 403 (Cloudflare WAF), ask the
+ * user to solve the challenge through the WebView dialog and retry with the
+ * cookies obtained from it.
+ */
+async function fetchWithWAF({
+  url,
+  signal,
+  axios,
+  headers,
+  openWebView,
+}: {
+  url: string;
+  signal: AbortSignal;
+  axios: ProviderContext["axios"];
+  headers: Record<string, string>;
+  openWebView?: ProviderContext["openWebView"];
+}) {
+  try {
+    return await axios.get(url, { headers, signal });
+  } catch (error: any) {
+    if (error?.response?.status === 403 && openWebView) {
+      console.log(`KDramasMaza WAF detected (403) for ${url}, using solver...`);
+      const wafResult = await openWebView(new URL(url).origin, {
+        title: "Solve the captcha below and click done",
+        description: "Required to bypass anti-bot protection on KDramasMaza.",
+        headers,
+      });
+      if (wafResult?.cookies) {
+        return await axios.get(url, {
+          headers: { ...headers, Cookie: wafResult.cookies },
+          signal,
+        });
+      }
+    }
+    throw error;
+  }
+}
 
 // WordPress pages that live alongside posts and must be excluded.
 const blockedSlugs = new Set([
@@ -48,6 +91,7 @@ async function scrapePosts({
   signal,
   axios,
   cheerio,
+  openWebView,
   operation,
 }: {
   baseUrl: string;
@@ -55,12 +99,21 @@ async function scrapePosts({
   signal: AbortSignal;
   axios: ProviderContext["axios"];
   cheerio: ProviderContext["cheerio"];
+  openWebView?: ProviderContext["openWebView"];
   operation: string;
 }): Promise<Post[]> {
   try {
-    const res = await axios.get(url, { headers, signal });
+    const res = await fetchWithWAF({
+      url,
+      signal,
+      axios,
+      headers,
+      openWebView,
+    });
     const $ = cheerio.load(res.data);
-    const baseHost = new URL(baseUrl).hostname.replace(/^www\./, "").toLowerCase();
+    const baseHost = new URL(baseUrl).hostname
+      .replace(/^www\./, "")
+      .toLowerCase();
 
     // Each post permalink is <site>/<slug>/ ; collect every anchor that
     // points to one, then merge title/image info across duplicate anchors.
@@ -133,8 +186,8 @@ export const getPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const { axios, cheerio } = providerContext;
-  const baseUrl = await getBaseUrl("kdramasmaza");
+  const { axios, cheerio, openWebView } = providerContext;
+  const baseUrl = (await getBaseUrl("kdramasmaza")) || DEFAULT_BASE_URL;
 
   const url = filter
     ? `${baseUrl}${filter}/page/${page}/`
@@ -148,6 +201,7 @@ export const getPosts = async function ({
     signal,
     axios,
     cheerio,
+    openWebView,
     operation: "posts",
   });
 };
@@ -165,8 +219,8 @@ export const getSearchPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const { axios, cheerio } = providerContext;
-  const baseUrl = await getBaseUrl("kdramasmaza");
+  const { axios, cheerio, openWebView } = providerContext;
+  const baseUrl = (await getBaseUrl("kdramasmaza")) || DEFAULT_BASE_URL;
 
   const url =
     page > 1
@@ -179,6 +233,7 @@ export const getSearchPosts = async function ({
     signal,
     axios,
     cheerio,
+    openWebView,
     operation: "search posts",
   });
 };

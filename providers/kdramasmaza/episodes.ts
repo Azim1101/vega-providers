@@ -30,6 +30,45 @@ function hostLabel(href: string, anchorText: string): string {
   }
 }
 
+/**
+ * Fetch a page, and if the site answers with 403 (Cloudflare WAF), ask the
+ * user to solve the challenge through the WebView dialog and retry with the
+ * cookies obtained from it.
+ */
+async function fetchWithWAF({
+  url,
+  signal,
+  axios,
+  headers,
+  openWebView,
+}: {
+  url: string;
+  signal?: AbortSignal;
+  axios: ProviderContext["axios"];
+  headers: Record<string, string>;
+  openWebView?: ProviderContext["openWebView"];
+}) {
+  try {
+    return await axios.get(url, { headers, signal });
+  } catch (error: any) {
+    if (error?.response?.status === 403 && openWebView) {
+      console.log(`KDramasMaza WAF detected (403) for ${url}, using solver...`);
+      const wafResult = await openWebView(new URL(url).origin, {
+        title: "Solve the captcha below and click done",
+        description: "Required to bypass anti-bot protection on KDramasMaza.",
+        headers,
+      });
+      if (wafResult?.cookies) {
+        return await axios.get(url, {
+          headers: { ...headers, Cookie: wafResult.cookies },
+          signal,
+        });
+      }
+    }
+    throw error;
+  }
+}
+
 export const getEpisodes = async function ({
   url,
   providerContext,
@@ -38,8 +77,8 @@ export const getEpisodes = async function ({
   providerContext: ProviderContext;
 }): Promise<EpisodeLink[]> {
   try {
-    const { axios, cheerio } = providerContext;
-    const res = await axios.get(url, { headers });
+    const { axios, cheerio, openWebView } = providerContext;
+    const res = await fetchWithWAF({ url, axios, headers, openWebView });
     const $ = cheerio.load(res.data);
 
     const episodeLinks: EpisodeLink[] = [];

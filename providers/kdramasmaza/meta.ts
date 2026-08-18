@@ -2,6 +2,10 @@ import { Info, Link, ProviderContext } from "../types";
 import { getBaseUrl } from "../getBaseUrl";
 import { throwProviderError } from "../providerErrors";
 
+// The runtime getBaseUrl() reads urls.json from the upstream repo where the
+// "kdramasmaza" key does not exist yet, so we always fall back to the site.
+const DEFAULT_BASE_URL = "https://kdramasmaza.net";
+
 const headers = {
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -41,11 +45,29 @@ export const getMeta = async function ({
   providerContext: ProviderContext;
 }): Promise<Info> {
   try {
-    const { axios, cheerio } = providerContext;
-    const baseUrl = await getBaseUrl("kdramasmaza");
+    const { axios, cheerio, openWebView } = providerContext;
+    const baseUrl = (await getBaseUrl("kdramasmaza")) || DEFAULT_BASE_URL;
     const url = new URL(link, `${baseUrl}/`).href;
 
-    const res = await axios.get(url, { headers });
+    let res;
+    try {
+      res = await axios.get(url, { headers });
+    } catch (error: any) {
+      if (error?.response?.status === 403 && openWebView) {
+        console.log(`KDramasMaza WAF detected (403) for ${url}, using solver...`);
+        const wafResult = await openWebView(new URL(url).origin, {
+          title: "Solve the captcha below and click done",
+          description: "Required to bypass anti-bot protection on KDramasMaza.",
+          headers,
+        });
+        if (wafResult?.cookies) {
+          res = await axios.get(url, {
+            headers: { ...headers, Cookie: wafResult.cookies },
+          });
+        }
+      }
+      if (!res) throw error;
+    }
     const $ = cheerio.load(res.data);
 
     const entryText = $(".entry-content").text() || $("article").text() || "";

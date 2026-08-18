@@ -36,6 +36,45 @@ function externalFallback(
 }
 
 /**
+ * Fetch a page, and if the site answers with 403 (Cloudflare WAF), ask the
+ * user to solve the challenge through the WebView dialog and retry with the
+ * cookies obtained from it.
+ */
+async function fetchWithWAF({
+  url,
+  signal,
+  axios,
+  headers,
+  openWebView,
+}: {
+  url: string;
+  signal?: AbortSignal;
+  axios: ProviderContext["axios"];
+  headers: Record<string, string>;
+  openWebView?: ProviderContext["openWebView"];
+}) {
+  try {
+    return await axios.get(url, { headers, signal });
+  } catch (error: any) {
+    if (error?.response?.status === 403 && openWebView) {
+      console.log(`KDramasMaza WAF detected (403) for ${url}, using solver...`);
+      const wafResult = await openWebView(new URL(url).origin, {
+        title: "Solve the captcha below and click done",
+        description: "Required to bypass anti-bot protection on KDramasMaza.",
+        headers,
+      });
+      if (wafResult?.cookies) {
+        return await axios.get(url, {
+          headers: { ...headers, Cookie: wafResult.cookies },
+          signal,
+        });
+      }
+    }
+    throw error;
+  }
+}
+
+/**
  * The archives pages on kdramasmaza.com.pk list the real hosts
  * (HubCloud / Dotflix / Sendcm ...). Pick the best one and resolve it.
  */
@@ -44,8 +83,9 @@ async function resolveArchivesPage(
   signal: AbortSignal,
   axios: ProviderContext["axios"],
   cheerio: ProviderContext["cheerio"],
+  openWebView?: ProviderContext["openWebView"],
 ): Promise<Stream[]> {
-  const res = await axios.get(link, { headers, signal });
+  const res = await fetchWithWAF({ url: link, signal, axios, headers, openWebView });
   const $ = cheerio.load(res.data);
 
   const hubcloud = $('a[href*="hubcloud"], a[href*="hubdrive"]')
@@ -163,7 +203,7 @@ export const getStream = async function ({
   providerContext: ProviderContext;
 }): Promise<Stream[]> {
   try {
-    const { axios, cheerio } = providerContext;
+    const { axios, cheerio, openWebView } = providerContext;
     const hostname = new URL(link).hostname.toLowerCase();
 
     if (/hubcloud|hubdrive|vcloud/i.test(hostname)) {
@@ -174,7 +214,7 @@ export const getStream = async function ({
       return resolveDotflix(link, signal, axios);
     }
     if (/kdramasmaza/i.test(hostname)) {
-      return resolveArchivesPage(link, signal, axios, cheerio);
+      return resolveArchivesPage(link, signal, axios, cheerio, openWebView);
     }
 
     // send.cm, media.cm, multiup.io, mirrorace.org, filepress.store, ...
