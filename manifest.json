@@ -374,5 +374,13 @@
     "icon": "",
     "type": "global",
     "disabled": false
+  },
+  {
+    "display_name": "KDramasMaza",
+    "value": "kdramasmaza",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
   }
 ]
