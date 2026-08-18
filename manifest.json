@@ -382,5 +382,13 @@
     "icon": "",
     "type": "india",
     "disabled": false
+  },
+  {
+    "display_name": "KDHindiDubbed",
+    "value": "kdhindidubbed",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
   }
 ]
