@@ -57,6 +57,7 @@ async function fetchWithWAF({
         title: "Solve the captcha below and click done",
         description: "Required to bypass anti-bot protection on KDramasMaza.",
         headers,
+        waitForCookie: "cf_clearance",
       });
       if (wafResult?.cookies) {
         return await axios.get(url, {

@@ -26,21 +26,50 @@ const headers = {
 };
 
 /**
- * Fetch a page, and if the site answers with 403 (Cloudflare WAF), ask the
- * user to solve the challenge through the WebView dialog and retry with the
- * cookies obtained from it.
+ * Ask the user to solve the Cloudflare / anti-bot challenge in a WebView
+ * dialog, then return the request retried with the cookies we obtained.
+ * Uses waitForCookie: "cf_clearance" so an already-solved cookie skips the
+ * dialog entirely.
  */
-async function fetchWithWAF({
+async function solveWafAndRetry({
   url,
   signal,
   axios,
-  headers,
   openWebView,
 }: {
   url: string;
   signal: AbortSignal;
   axios: ProviderContext["axios"];
-  headers: Record<string, string>;
+  openWebView: ProviderContext["openWebView"];
+}) {
+  const origin = new URL(url).origin;
+  console.log(`KDramasMaza opening WAF solver for ${origin}`);
+  const wafResult = await openWebView(origin, {
+    title: "Solve the captcha below and click done",
+    description: "Required to bypass anti-bot protection on KDramasMaza.",
+    headers,
+    waitForCookie: "cf_clearance",
+  });
+  if (!wafResult?.cookies) return null;
+  return axios.get(url, {
+    headers: { ...headers, Cookie: wafResult.cookies },
+    signal,
+  });
+}
+
+/**
+ * Fetch a page. If the site answers with 403 (Cloudflare WAF), ask the user
+ * to solve the challenge through the WebView dialog and retry with cookies.
+ */
+async function fetchWithWAF({
+  url,
+  signal,
+  axios,
+  openWebView,
+}: {
+  url: string;
+  signal: AbortSignal;
+  axios: ProviderContext["axios"];
   openWebView?: ProviderContext["openWebView"];
 }) {
   try {
@@ -48,20 +77,37 @@ async function fetchWithWAF({
   } catch (error: any) {
     if (error?.response?.status === 403 && openWebView) {
       console.log(`KDramasMaza WAF detected (403) for ${url}, using solver...`);
-      const wafResult = await openWebView(new URL(url).origin, {
-        title: "Solve the captcha below and click done",
-        description: "Required to bypass anti-bot protection on KDramasMaza.",
-        headers,
-      });
-      if (wafResult?.cookies) {
-        return await axios.get(url, {
-          headers: { ...headers, Cookie: wafResult.cookies },
-          signal,
-        });
-      }
+      const retry = await solveWafAndRetry({ url, signal, axios, openWebView });
+      if (retry) return retry;
     }
     throw error;
   }
+}
+
+/** Detect a Cloudflare interstitial served with a 200 status. */
+function looksLikeChallenge($: any): boolean {
+  const title = ($("title").first().text() || "").toLowerCase();
+  const bodyText = ($("body").text() || "").toLowerCase();
+  return (
+    title.includes("just a moment") ||
+    title.includes("attention required") ||
+    title.includes("cf-chl") ||
+    bodyText.includes("checking your browser") ||
+    bodyText.includes("challenge-platform") ||
+    bodyText.includes("cf-chl-") ||
+    bodyText.includes("enable javascript and cookies to continue")
+  );
+}
+
+/** A normal KDramasMaza page has at least some WordPress content markers. */
+function looksLikeWordPressPage($: any): boolean {
+  return (
+    $("article").length > 0 ||
+    $(".entry-content").length > 0 ||
+    $(".post, .hentry").length > 0 ||
+    $('link[rel="wlwmanifest"]').length > 0 ||
+    $('meta[name="generator"][content*="WordPress"]').length > 0
+  );
 }
 
 // WordPress pages that live alongside posts and must be excluded.
@@ -85,6 +131,61 @@ function cleanTitle(title: string): string {
     .trim();
 }
 
+function parsePosts($: any, baseUrl: string): Post[] {
+  const baseHost = new URL(baseUrl).hostname.replace(/^www\./, "").toLowerCase();
+
+  // Each post permalink is <site>/<slug>/ ; collect every anchor that
+  // points to one, then merge title/image info across duplicate anchors.
+  const posts = new Map<string, { link: string; title: string; image: string }>();
+
+  $("a[href]").each((_: any, el: any) => {
+    const href = $(el).attr("href")?.trim();
+    if (!href) return;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(href, baseUrl);
+    } catch {
+      return;
+    }
+    if (parsed.search || parsed.hash) return;
+    if (parsed.hostname.replace(/^www\./, "").toLowerCase() !== baseHost)
+      return;
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    if (segments.length !== 1) return;
+
+    const slug = segments[0].toLowerCase();
+    if (blockedSlugs.has(slug)) return;
+    if (!/^[a-z0-9-]+$/i.test(slug)) return;
+
+    const existing = posts.get(href) || { link: href, title: "", image: "" };
+    const anchorText = $(el).text().trim();
+    const title =
+      $(el).attr("title")?.trim() ||
+      (anchorText.length > existing.title.length ? anchorText : "");
+    if (title) existing.title = title;
+    const img =
+      $(el).find("img").first().attr("data-src") ||
+      $(el).find("img").first().attr("src") ||
+      "";
+    if (img) existing.image = img;
+    posts.set(href, existing);
+  });
+
+  const catalog: Post[] = [];
+  posts.forEach((post) => {
+    const title = cleanTitle(post.title);
+    if (!title && !post.image) return;
+    catalog.push({
+      title: title || "Untitled",
+      link: post.link,
+      image: post.image,
+    });
+  });
+  return catalog;
+}
+
 async function scrapePosts({
   baseUrl,
   url,
@@ -103,70 +204,25 @@ async function scrapePosts({
   operation: string;
 }): Promise<Post[]> {
   try {
-    const res = await fetchWithWAF({
-      url,
-      signal,
-      axios,
-      headers,
-      openWebView,
-    });
-    const $ = cheerio.load(res.data);
-    const baseHost = new URL(baseUrl).hostname
-      .replace(/^www\./, "")
-      .toLowerCase();
+    let res = await fetchWithWAF({ url, signal, axios, openWebView });
+    let $ = cheerio.load(res.data);
+    let catalog = parsePosts($, baseUrl);
 
-    // Each post permalink is <site>/<slug>/ ; collect every anchor that
-    // points to one, then merge title/image info across duplicate anchors.
-    const posts = new Map<
-      string,
-      { link: string; title: string; image: string }
-    >();
-
-    $("a[href]").each((_, el) => {
-      const href = $(el).attr("href")?.trim();
-      if (!href) return;
-
-      let parsed: URL;
-      try {
-        parsed = new URL(href, baseUrl);
-      } catch {
-        return;
+    // The page might be a Cloudflare interstitial served with status 200,
+    // or something that is not the site at all. Try the WAF solver once.
+    if (catalog.length === 0 && openWebView) {
+      const looksBlocked =
+        looksLikeChallenge($) || !looksLikeWordPressPage($);
+      if (looksBlocked) {
+        console.log(`KDramasMaza challenge detected for ${url}, using solver...`);
+        const retry = await solveWafAndRetry({ url, signal, axios, openWebView });
+        if (retry) {
+          $ = cheerio.load(retry.data);
+          catalog = parsePosts($, baseUrl);
+        }
       }
-      if (parsed.search || parsed.hash) return;
-      if (parsed.hostname.replace(/^www\./, "").toLowerCase() !== baseHost)
-        return;
+    }
 
-      const segments = parsed.pathname.split("/").filter(Boolean);
-      if (segments.length !== 1) return;
-
-      const slug = segments[0].toLowerCase();
-      if (blockedSlugs.has(slug)) return;
-      if (!/^[a-z0-9-]+$/i.test(slug)) return;
-
-      const existing = posts.get(href) || { link: href, title: "", image: "" };
-      const anchorText = $(el).text().trim();
-      const title =
-        $(el).attr("title")?.trim() ||
-        (anchorText.length > existing.title.length ? anchorText : "");
-      if (title) existing.title = title;
-      const img =
-        $(el).find("img").first().attr("data-src") ||
-        $(el).find("img").first().attr("src") ||
-        "";
-      if (img) existing.image = img;
-      posts.set(href, existing);
-    });
-
-    const catalog: Post[] = [];
-    posts.forEach((post) => {
-      const title = cleanTitle(post.title);
-      if (!title && !post.image) return;
-      catalog.push({
-        title: title || "Untitled",
-        link: post.link,
-        image: post.image,
-      });
-    });
     return catalog;
   } catch (err) {
     throwProviderError("KDramasMaza", operation, err);

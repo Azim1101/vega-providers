@@ -485,6 +485,50 @@ function check(name, cond, extra) {
     dtflixJs,
   );
 
+
+  console.log("\n--- challenge page handling ---");
+  const cfChallengePage = `<html><head><title>Just a moment...</title></head><body>
+  <div class="cf-browser-verification"><div class="cf-chl">Checking your browser before accessing kdramasmaza.net.</div></div>
+  </body></html>`;
+  const { getPosts: getPosts2 } = loadModule("posts");
+  const cfAxios = {
+    get: (url, config) => {
+      const cookie = config?.headers?.Cookie || "";
+      if (cookie.includes("cf_clearance=solved")) {
+        return Promise.resolve({ data: listPageHtml });
+      }
+      return Promise.resolve({ data: cfChallengePage });
+    },
+  };
+  const cfContext = { ...providerContext, axios: cfAxios };
+  let wafOpened = 0;
+  const withWaf = {
+    ...providerContext,
+    axios: cfAxios,
+    openWebView: async (origin, opts) => {
+      wafOpened++;
+      return { cookies: "cf_clearance=solved", data: "", url: origin, userAgent: "test", cookieMap: {} };
+    },
+  };
+  const challengePosts = await getPosts2({
+    filter: "",
+    page: 1,
+    providerValue: "kdramasmaza",
+    signal: new AbortController().signal,
+    providerContext: withWaf,
+  });
+  console.log("  challenge posts after solve:", challengePosts.length);
+  check("challenge page triggers WAF solver once", wafOpened === 1, wafOpened);
+  check("posts parsed after WAF solve", challengePosts.length === 4, challengePosts.length);
+  const noWafPosts = await getPosts2({
+    filter: "",
+    page: 1,
+    providerValue: "kdramasmaza",
+    signal: new AbortController().signal,
+    providerContext: cfContext,
+  });
+  check("without WAF returns empty instead of crashing", Array.isArray(noWafPosts) && noWafPosts.length === 0, noWafPosts);
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
