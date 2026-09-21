@@ -390,5 +390,13 @@
     "icon": "",
     "type": "india",
     "disabled": false
+  },
+  {
+    "display_name": "MX Player",
+    "value": "mxplayer",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
   }
 ]
