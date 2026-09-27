@@ -406,5 +406,45 @@
     "icon": "",
     "type": "global",
     "disabled": false
+  },
+  {
+    "display_name": "PikaHD",
+    "value": "pikaHD",
+    "version": "1.0",
+    "icon": "",
+    "type": "english",
+    "disabled": false
+  },
+  {
+    "display_name": "MoviesBaba",
+    "value": "moviesBaba",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
+  },
+  {
+    "display_name": "KatDrama",
+    "value": "katDrama",
+    "version": "1.0",
+    "icon": "",
+    "type": "english",
+    "disabled": false
+  },
+  {
+    "display_name": "Katmovie18",
+    "value": "katmovie18",
+    "version": "1.0",
+    "icon": "",
+    "type": "english",
+    "disabled": true
+  },
+  {
+    "display_name": "Katmovie4K",
+    "value": "katmovie4k",
+    "version": "1.0",
+    "icon": "",
+    "type": "english",
+    "disabled": false
   }
 ]

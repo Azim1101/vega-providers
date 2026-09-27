@@ -14,7 +14,7 @@ export const getStream = async ({
 }): Promise<Stream[]> => {
   try {
     const streams: Stream[] = [];
-    
+
     // Parse the link payload (JSON or plain tmdbId)
     const payload = (() => {
       try {
@@ -31,36 +31,57 @@ export const getStream = async ({
     const episode: string = payload.episode ?? "";
     const effectiveType: string = payload.type ?? type ?? "movie";
 
-    console.log("ScreenScape stream payload:", { tmdbId, imdbId, season, episode, effectiveType });
-
-    // ScreenScape requires TMDB ID for embeds
-    if (!tmdbId || tmdbId === "undefined" || tmdbId === "") {
-      console.warn("ScreenScape: missing tmdbId in link payload");
-      return streams;
-    }
-
-    // Build the embed URL based on content type
-    let embedUrl: string;
-    
-    if (effectiveType === "series" || effectiveType === "tv") {
-      // TV Series embed
-      if (!season || !episode) {
-        console.warn("ScreenScape: missing season or episode for TV series");
-        return streams;
-      }
-      embedUrl = `${SCREENSCAPE_EMBED_BASE}?tmdb=${tmdbId}&type=tv&s=${season}&e=${episode}`;
-    } else {
-      // Movie embed
-      embedUrl = `${SCREENSCAPE_EMBED_BASE}?tmdb=${tmdbId}&type=movie`;
-    }
-
-    console.log("ScreenScape embed URL:", embedUrl);
-
-    streams.push({
-      server: "ScreenScape",
-      link: embedUrl,
-      type: "embed",
+    console.log("ScreenScape stream payload:", {
+      tmdbId,
+      imdbId,
+      season,
+      episode,
+      effectiveType,
     });
+
+    const isTV =
+      effectiveType === "series" || effectiveType === "tv";
+
+    // Try TMDB-based embed first
+    if (tmdbId && tmdbId !== "undefined" && tmdbId !== "") {
+      let embedUrl: string;
+      if (isTV) {
+        if (!season || !episode) {
+          console.warn("ScreenScape: missing season or episode for TV series");
+          return streams;
+        }
+        embedUrl = `${SCREENSCAPE_EMBED_BASE}?tmdb=${tmdbId}&type=tv&s=${season}&e=${episode}`;
+      } else {
+        embedUrl = `${SCREENSCAPE_EMBED_BASE}?tmdb=${tmdbId}&type=movie`;
+      }
+      console.log("ScreenScape TMDB embed URL:", embedUrl);
+      streams.push({
+        server: "ScreenScape",
+        link: embedUrl,
+        type: "embed",
+      });
+    }
+
+    // Fallback: IMDB-based embed
+    if (imdbId && imdbId !== "undefined" && imdbId !== "") {
+      let embedUrl: string;
+      if (isTV) {
+        if (!season || !episode) return streams;
+        embedUrl = `${SCREENSCAPE_EMBED_BASE}?imdb=${imdbId}&type=tv&s=${season}&e=${episode}`;
+      } else {
+        embedUrl = `${SCREENSCAPE_EMBED_BASE}?imdb=${imdbId}&type=movie`;
+      }
+      console.log("ScreenScape IMDB embed URL:", embedUrl);
+      streams.push({
+        server: "ScreenScape (IMDB)",
+        link: embedUrl,
+        type: "embed",
+      });
+    }
+
+    if (streams.length === 0) {
+      console.warn("ScreenScape: no valid tmdbId or imdbId in link payload");
+    }
 
     return streams;
   } catch (err) {

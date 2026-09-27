@@ -162,5 +162,25 @@
   "screenScape": {
     "name": "screenScape",
     "url": "https://screenscape.me"
+  },
+  "pikaHD": {
+    "name": "pikaHD",
+    "url": "https://new.pikahd.co"
+  },
+  "moviesBaba": {
+    "name": "moviesBaba",
+    "url": "https://moviesbaba.best"
+  },
+  "katDrama": {
+    "name": "katDrama",
+    "url": "https://new.katdrama.my"
+  },
+  "katmovie18": {
+    "name": "katmovie18",
+    "url": "https://new.katmovie18.my"
+  },
+  "katmovie4k": {
+    "name": "katmovie4k",
+    "url": "https://katmovie4k.org"
   }
 }
