@@ -398,5 +398,13 @@
     "icon": "",
     "type": "india",
     "disabled": false
+  },
+  {
+    "display_name": "ScreenScape",
+    "value": "screenScape",
+    "version": "1.0",
+    "icon": "",
+    "type": "global",
+    "disabled": false
   }
 ]

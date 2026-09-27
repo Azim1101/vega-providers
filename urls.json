@@ -158,5 +158,9 @@
   "mxplayer": {
     "name": "mxplayer",
     "url": "https://www.mxplayer.in"
+  },
+  "screenScape": {
+    "name": "screenScape",
+    "url": "https://screenscape.me"
   }
 }
