@@ -1,5 +1,11 @@
 import { Info, Link, ProviderContext } from "../types";
 
+function asTag(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const tag = value.trim();
+  return tag || undefined;
+}
+
 export const getMeta = async function ({
   link,
   providerContext,
@@ -8,43 +14,47 @@ export const getMeta = async function ({
   providerContext: ProviderContext;
 }): Promise<Info> {
   try {
-    const { axios } = providerContext;
-    const res = await axios.get(link);
-    const data = res.data;
-    const meta = {
-      title: data.title,
-      synopsis: data.description,
-      image: data.thumbnail,
-      tags: [data?.releaseDate?.split("-")[0], data?.status, data?.type],
-      imdbId: "",
-      type: data.episodesCount > 1 ? "series" : "movie",
-    };
+    const response = await providerContext.axios.get(link);
+    const data = response.data || {};
+    const episodes = Array.isArray(data.episodes) ? data.episodes.slice().reverse() : [];
+    const episodeCount = Number(data.episodesCount);
+    const isMovie = Number.isFinite(episodeCount)
+      ? episodeCount <= 1
+      : episodes.length <= 1;
+    const type = isMovie ? "movie" : "series";
+    const title = typeof data.title === "string" ? data.title : "";
+    const tags = [
+      asTag(typeof data.releaseDate === "string" ? data.releaseDate.split("-")[0] : undefined),
+      asTag(data.status),
+      asTag(data.type),
+    ].filter((tag): tag is string => Boolean(tag));
 
-    const linkList: Link[] = [];
-    const subLinks: Link["directLinks"] = [];
-
-    data?.episodes?.reverse().map((episode: any) => {
-      const title = "Episode " + episode?.number;
-      const link = episode?.id?.toString();
-      if (link && title) {
-        subLinks.push({
-          title,
-          link,
-        });
-      }
-    });
-
-    linkList.push({
-      title: meta.title,
-      directLinks: subLinks,
-    });
+    const directLinks: Link["directLinks"] = [];
+    for (const episode of episodes) {
+      if (episode?.id === undefined || episode?.id === null) continue;
+      directLinks.push({
+        title: isMovie ? "Full Movie" : `Episode ${episode.number ?? ""}`.trim(),
+        link: String(episode.id),
+        type,
+      });
+    }
 
     return {
-      ...meta,
-      linkList: linkList,
+      title,
+      synopsis: typeof data.description === "string" ? data.description : "",
+      image: data.thumbnail || data.image || "",
+      tags,
+      imdbId: "",
+      type,
+      linkList: [
+        {
+          title: isMovie ? "Movie" : title,
+          directLinks,
+        },
+      ],
     };
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error("KissKh metadata request failed", error);
     return {
       title: "",
       synopsis: "",
